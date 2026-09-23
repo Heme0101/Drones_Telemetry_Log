@@ -1,9 +1,15 @@
 from pymavlink import mavutil
 import time
-import sqlite3
+import psycopg2
 import datetime
 
-db = sqlite3.connect("telemetry.db")
+db = psycopg2.connect(
+    dbname="telemetry_pg",
+    user="heme",
+    password="REDACTED",
+    host="localhost"
+)
+
 cursor = db.cursor()
 count = 0
 
@@ -43,7 +49,7 @@ while count < 20:
 
     if time.time() - last_log_time >= 2:
         timestamp = str(datetime.datetime.now())
-        cursor.execute("INSERT INTO telemetry (timestamp, roll, yaw, pitch, altitude) VALUES (?,?,?,?,?)", 
+        cursor.execute("INSERT INTO telemetry (timestamp, roll, yaw, pitch, altitude) VALUES (%s, %s, %s, %s, %s)", 
                     (timestamp, att.roll, att.yaw, att.pitch, gps.relative_alt / 304.8))
         db.commit()
         print("Logged: ", att.roll, gps.relative_alt/304.8)
