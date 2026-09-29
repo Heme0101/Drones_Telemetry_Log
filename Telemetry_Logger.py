@@ -2,7 +2,6 @@ from pymavlink import mavutil
 import time
 import psycopg2
 import datetime
-import asyncio
 import config
 
 
@@ -28,7 +27,7 @@ class Drone:
             self.connection.target_component,
             mavutil.mavlink.MAV_CMD_NAV_TAKEOFF,
             0,
-            0,0,0,0,0,0,30
+            0,0,0,0,0,0,15
         )
         return self.connection.recv_match(type="COMMAND_ACK", blocking=True, timeout=2)
 
@@ -42,16 +41,14 @@ class Drone:
         return self.connection.recv_match(type="COMMAND_ACK", blocking=True, timeout=2)
 
 
-    async def getPosition(self):
+    def getPosition(self):
         att = self.connection.recv_match(type="ATTITUDE", blocking=True)
-        asyncio.sleep(2)
         return att
 
 
-    async def getLocation(self):
+    def getLocation(self):
         gps = self.connection.recv_match(type="GLOBAL_POSITION_INT", blocking=True)
-        asyncio.sleep(2)
-        return gps
+        return gps.relative_alt
 
 
 class Database:
@@ -64,25 +61,38 @@ class Database:
         )
         self.cursor = self.db.cursor()
 
-    async def add2Database(self, att, gps, timestamp):
-        await self.cursor.execute(
+    def add2Database(self, att, gps, timestamp):
+        self.cursor.execute(
             "INSERT INTO telemetry (timestamp, roll, yaw, pitch, altitude) VALUES (%s, %s, %s, %s, %s)",
-            (timestamp, att.roll, att.yaw, att.pitch, gps.relative_alt / 304.8)
+            (timestamp, att.roll, att.yaw, att.pitch, gps / 304.8)
         )
-        await self.db.commit()
+        self.db.commit()
 
 
+drone = Drone()
+db = Database()
 
-active = Drone.arm()
-fly = Drone.takeoff()
+timeInterval = 2
+lastLoggedTime = time.time()
+
+drone.arm()
+drone.takeoff()
+
 
 while True:
-    currentTime = time.time()
-    if currentTime >= time.time():
-        Drone.getPosition()
-        Drone.getLocation()
-        Database.add2Database()
+    fastPos = drone.getPosition()
+    fastCoordinates = drone.getLocation()
 
-    if Drone.getLocation.gps.relative_alt >= 30:
-        descend = Drone.land()
-        break
+    if time.time() - lastLoggedTime >= timeInterval:
+        print(f"Altitude: {fastCoordinates / 304.8} feet")
+        write = db.add2Database(fastPos, fastCoordinates, datetime.datetime.now())
+        sequence = [fastPos, fastCoordinates]
+
+        for action in sequence:
+            print(action)
+
+        lastLoggedTime = time.time()
+
+        if fastCoordinates / 304.8 >= 45.5:
+            land = drone.land()
+            break
