@@ -27,7 +27,7 @@ class Drone:
             self.connection.target_component,
             mavutil.mavlink.MAV_CMD_NAV_TAKEOFF,
             0,
-            0,0,0,0,0,0,15
+            0,0,0,0,0,0,60
         )
         return self.connection.recv_match(type="COMMAND_ACK", blocking=True, timeout=2)
 
@@ -48,8 +48,7 @@ class Drone:
 
     def getLocation(self):
         gps = self.connection.recv_match(type="GLOBAL_POSITION_INT", blocking=True)
-        return gps.relative_alt
-
+        return gps
 
 class Database:
     def __init__(self):
@@ -64,9 +63,24 @@ class Database:
     def add2Database(self, att, gps, timestamp):
         self.cursor.execute(
             "INSERT INTO telemetry (timestamp, roll, yaw, pitch, altitude) VALUES (%s, %s, %s, %s, %s)",
-            (timestamp, att.roll, att.yaw, att.pitch, gps / 304.8)
+            (timestamp, att.roll, att.yaw, att.pitch, gps.relative_alt / 304.8)
         )
         self.db.commit()
+
+
+    def checkSpatialCoordinates(self, gps):
+        lat = gps.lat/1e7
+        long = gps.lon/1e7
+        
+        boundaryCompliance = self.cursor.execute("""
+        SELECT ST_Contains(boundary::geometry, ST_GeogFromText(%s)::geometry)
+        FROM geofences WHERE name=%s;
+        """,
+        (f"POINT({long} {lat})", "Test Zone")
+        )
+
+        result = self.cursor.fetchone()
+        return result[0]
 
 
 drone = Drone()
@@ -82,9 +96,10 @@ drone.takeoff()
 while True:
     fastPos = drone.getPosition()
     fastCoordinates = drone.getLocation()
+    boundaryCompliance = db.checkSpatialCoordinates(fastCoordinates)
 
     if time.time() - lastLoggedTime >= timeInterval:
-        print(f"Altitude: {fastCoordinates / 304.8} feet")
+        print(f"Altitude: {fastCoordinates.relative_alt / 304.8} feet")
         write = db.add2Database(fastPos, fastCoordinates, datetime.datetime.now())
         sequence = [fastPos, fastCoordinates]
 
@@ -93,6 +108,6 @@ while True:
 
         lastLoggedTime = time.time()
 
-        if fastCoordinates / 304.8 >= 45.5:
+        if fastCoordinates.relative_alt / 304.8 >= 111 or boundaryCompliance == False:
             land = drone.land()
             break
