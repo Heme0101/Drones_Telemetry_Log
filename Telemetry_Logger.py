@@ -35,20 +35,28 @@ class Drone:
         self.connection.mav.command_long_send(
             self.connection.target_system,
             self.connection.target_component,
-            mavutil.mavlink.MAV_CMD_NAV_LAND,
+            mavutil.mavlink.MAV_CMD_NAV_RETURN_TO_LAUNCH,
             0,0,0,0,0,0,0,0
         )
         return self.connection.recv_match(type="COMMAND_ACK", blocking=True, timeout=2)
-
 
     def getPosition(self):
         att = self.connection.recv_match(type="ATTITUDE", blocking=True)
         return att
 
-
     def getLocation(self):
         gps = self.connection.recv_match(type="GLOBAL_POSITION_INT", blocking=True)
         return gps
+
+    def goto(self, long, lat):
+        self.connection.mav.command_long_send(
+            self.connection.target_system,
+            self.connection.target_component,
+            mavutil.mavlink.MAV_CMD_DO_REPOSITION,
+            0,
+            -1,0,0,float('nan'),lat,long,40
+        )
+
 
 class Database:
     def __init__(self):
@@ -89,6 +97,7 @@ db = Database()
 timeInterval = 2
 lastLoggedTime = time.time()
 
+flyTo = (-121.9640,37.3985)
 drone.arm()
 drone.takeoff()
 
@@ -99,15 +108,17 @@ while True:
     boundaryCompliance = db.checkSpatialCoordinates(fastCoordinates)
 
     if time.time() - lastLoggedTime >= timeInterval:
-        print(f"Altitude: {fastCoordinates.relative_alt / 304.8} feet")
         write = db.add2Database(fastPos, fastCoordinates, datetime.datetime.now())
-        sequence = [fastPos, fastCoordinates]
+        sequence = [fastCoordinates.relative_alt/1000]
 
         for action in sequence:
             print(action)
 
         lastLoggedTime = time.time()
 
-        if fastCoordinates.relative_alt / 304.8 >= 111 or boundaryCompliance == False:
+        if fastCoordinates.relative_alt / 304.8 >= 111:
+            drone.goto(*flyTo)
+        
+        elif boundaryCompliance == False:
             land = drone.land()
             break
