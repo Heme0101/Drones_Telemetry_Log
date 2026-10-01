@@ -1,6 +1,7 @@
 from pymavlink import mavutil
 import time
-import psycopg2
+import asyncpg
+import asyncio
 import datetime
 import config
 
@@ -59,7 +60,7 @@ class Drone:
 
 
 class Database:
-    def __init__(self):
+    def __init__(self, pool):
         self.db = psycopg2.connect(
             dbname=config.DB_NAME,
             user=config.DB_USER,
@@ -90,9 +91,19 @@ class Database:
         result = self.cursor.fetchone()
         return result[0]
 
+    @classmethod
+    async def create(cls):
+        pool = await asyncpg.create_pool(
+            db=config.DB_NAME, 
+            username=config.DB_USER, 
+            password=config.DB_PASSWORD, 
+            host=config.DB_HOST
+        )
+        return cls(pool)
+
 
 drone = Drone()
-db = Database()
+db = await Database.create()
 
 timeInterval = 2
 lastLoggedTime = time.time()
@@ -102,23 +113,32 @@ drone.arm()
 drone.takeoff()
 
 
-while True:
-    fastPos = drone.getPosition()
-    fastCoordinates = drone.getLocation()
-    boundaryCompliance = db.checkSpatialCoordinates(fastCoordinates)
+try: 
+    while True:
+        fastPos = drone.getPosition()
+        fastCoordinates = drone.getLocation()
+        boundaryCompliance = db.checkSpatialCoordinates(fastCoordinates)
 
-    if time.time() - lastLoggedTime >= timeInterval:
-        write = db.add2Database(fastPos, fastCoordinates, datetime.datetime.now())
-        sequence = [fastCoordinates.relative_alt/1000]
+        if time.time() - lastLoggedTime >= timeInterval:
+            write = db.add2Database(fastPos, fastCoordinates, datetime.datetime.now())
+            sequence = [fastCoordinates.relative_alt/1000]
 
-        for action in sequence:
-            print(action)
+            for action in sequence:
+                print(action)
 
-        lastLoggedTime = time.time()
+            lastLoggedTime = time.time()
 
-        if fastCoordinates.relative_alt / 304.8 >= 111:
-            drone.goto(*flyTo)
-        
-        elif boundaryCompliance == False:
-            land = drone.land()
-            break
+            if fastCoordinates.relative_alt / 304.8 >= 111:
+                drone.goto(*flyTo)
+            
+            elif boundaryCompliance == False:
+                land = drone.land()
+                break
+
+except Exception as E:
+    print(f"An unexpected error has occured: {E}")
+    drone.land()
+
+finally:
+    db.cursor.close()
+    db.db.close()
