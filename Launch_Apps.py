@@ -2,12 +2,11 @@ import subprocess
 import config
 import time
 
-totalDrones = 3
 processes=[]
 
 home_env = " ".join(f"{k}={v}" for k,v in config.LAUNCH_ENV.items())
 
-for i in range(1, totalDrones + 1):
+for i in range(1, config.totalDrones + 1):
     y_offset = i-1
 
     shell_cmd = (

@@ -8,7 +8,8 @@ import config
 
 class Drone:
     def __init__(self, connection_string='udp:127.0.0.1:14540'):
-        self.connection = mavutil.mavlink_connection(connection_string)    
+        self.connection = mavutil.mavlink_connection(connection_string)
+        self.connection_string = connection_string    
         self.connection.wait_heartbeat()
         print("Connected to system: ", self.connection.target_system)
         self.lock = asyncio.Lock()
@@ -53,12 +54,12 @@ class Drone:
 
     async def getPosition(self):
         async with self.lock:
-            att = await asyncio.to_thread(self.connection.recv_match, type="ATTITUDE", blocking=True)
+            att = await asyncio.to_thread(self.connection.recv_match, type="ATTITUDE", blocking=True, timeout=2)
             return att
 
     async def getLocation(self):
         async with self.lock:
-            gps = await asyncio.to_thread(self.connection.recv_match, type="GLOBAL_POSITION_INT", blocking=True)
+            gps = await asyncio.to_thread(self.connection.recv_match, type="GLOBAL_POSITION_INT", blocking=True, timeout=2)
             return gps
 
     async def goto(self, long, lat):
@@ -76,7 +77,7 @@ class Database:
     def __init__(self, pool):
         self.pool = pool
 
-    async def add2Database(self, att, gps, timestamp):
+    async def addToDatabase(self, att, gps, timestamp):
         await self.pool.execute(
             "INSERT INTO telemetry (timestamp, roll, yaw, pitch, altitude) VALUES ($1, $2, $3, $4, $5)",
             timestamp, att.roll, att.yaw, att.pitch, gps.relative_alt / 304.8
@@ -106,48 +107,76 @@ class Database:
         return cls(pool)
 
 
-async def main():
-    drone = Drone()
-    drone2 = Drone('udp:127.0.0.1:14541')
-    db = await Database.create()
-
-    timeInterval = 2
+async def droneLifeCycle(drone, db, timeInterval, flyTo, missedReadsAllowed):
+    missedReads = 0
     lastLoggedTime = time.time()
 
-    flyTo = (-121.9640,37.3985)
-    await drone.arm()
-    await drone.takeoff()
-
-
-    try: 
+    try:
+        await drone.arm()
+        await drone.takeoff() 
         while True:
             fastPos = await drone.getPosition()
             fastCoordinates = await drone.getLocation()
+
+            if fastPos is None or fastCoordinates is None:
+                missedReads+=1
+                if missedReads >= missedReadsAllowed:
+                    print(f"{drone.connection_string}: failed to broadcast telemetry, landing.")
+                    await drone.land()
+                    return
+                continue
+            missedReads=0
+
             boundaryCompliance = await db.checkSpatialCoordinates(fastCoordinates)
 
+            if boundaryCompliance == False:
+                await drone.land()
+                return
+
             if time.time() - lastLoggedTime >= timeInterval:
-                write = await db.add2Database(fastPos, fastCoordinates, datetime.datetime.now())
-                sequence = [fastCoordinates.relative_alt/1000]
-
-                for action in sequence:
-                    print(action)
-
-                lastLoggedTime = time.time()
+                await db.addToDatabase(fastPos, fastCoordinates, datetime.datetime.now())
 
                 if fastCoordinates.relative_alt / 304.8 >= 111:
                     await drone.goto(*flyTo)
-                
-                elif boundaryCompliance == False:
-                    land = await drone.land()
-                    break
 
+                lastLoggedTime = time.time()
+                    
+    except asyncio.CancelledError:
+        print(f"{drone.connection_string}: cancelled, landing")
+        try:
+            await drone.land()
+        except Exception as landError:
+            print(f"{drone.connection_string}: couldn't land: {landError}")
+        raise
     except Exception as E:
-        print(f"An unexpected error has occured: {E}")
+        print(f"{drone.connection_string}: has failed in the loop: {E}")
         await drone.land()
+
+
+
+async def main():
+    timeInterval = 2
+    missedReadsAllowed = 3
+    flyTo = (-121.9640,37.3985)
+    db = await Database.create()
+
+    try:
+        drones = [Drone(f'udp:127.0.0.1:{14540+i}') for i in range(1, config.totalDrones+1)]
+        results = await asyncio.gather(
+            *(droneLifeCycle(drone, db, timeInterval, flyTo, missedReadsAllowed) for drone in drones),
+            return_exceptions=True
+        )
+
+        for drone, result in zip(drones, results):
+            if isinstance(result, Exception):
+                print(f"{drone.connection_string}: task ended with an unexpected error: {result}")
 
     finally:
         await db.pool.close()
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("Stopped by user.")
