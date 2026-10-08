@@ -3,34 +3,37 @@ import config
 import time
 
 processes=[]
+env_prefix = " ".join(f"{key}={value}" for key, value in config.LAUNCH_ENV.items())
 
-home_env = " ".join(f"{k}={v}" for k,v in config.LAUNCH_ENV.items())
+vehicles = [
+    {"instance": "0", "model":"gz_standard_vtol", "pose": "0,0", "standalone": False},
+    {"instance": "1", "model":"gz_standard_vtol", "pose": "0,4", "standalone": True},
+    {"instance": "2", "model":"gz_standard_vtol", "pose": "0,8", "standalone": True},
+    {"instance": "3", "model":"gz_rover_differential", "pose": "0,12", "standalone": True}
+]
 
-for i in range(1, config.totalDrones + 1):
-    y_offset = i-1
+for v in vehicles:
+    standalone = "PX4_GZ_STANDALONE=1" if v["standalone"] else ""
 
     shell_cmd = (
-        f"{home_env} "
-        f"PX4_SYS_AUTOSTART=4001 "
-        f"PX4_SIM_MODEL=gz_x500 "
-        f'PX4_GZ_MODEL_POSE="0,{y_offset}" '
-        f"./build/px4_sitl_default/bin/px4 -i {i}; exec bash"
+        f"{env_prefix} {standalone} PX4_GZ_WORLD=default "
+        f"PX4_SIM_MODEL={v['model']} PX4_GZ_MODEL_POSE=\"{v['pose']}\" "
+        f"./build/px4_sitl_default/bin/px4 -i {v['instance']}; exec bash"
     )
     
-    proc = subprocess.Popen([
+    initiation = subprocess.Popen([
         "gnome-terminal",
         f"--working-directory={config.LAUNCH_CWD}",
         "--", "bash", "-c", shell_cmd,
     ])
-    processes.append(proc)
 
-    if i==1:
-        time.sleep(8)
+    if v['instance']=="0":
+        time.sleep(10)
+    else:
+        time.sleep(2)
 
 qgc = subprocess.Popen([
     "gnome-terminal", 
     f"--working-directory={config.LAUNCH_CWD}", 
     "--", "./QGroundControl-x86_64.AppImage",
 ])
-
-processes.append(qgc)
