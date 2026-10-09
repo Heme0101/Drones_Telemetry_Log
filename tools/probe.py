@@ -3,8 +3,10 @@ from collections import Counter
 from pymavlink import mavutil
 
 VEHICLES = {
-    "VTOL-1":  "udp:127.0.0.1:14541",
-    "Rover-1": "udp:127.0.0.1:14544"
+    "VTOL-1":  "udp:127.0.0.1:14540",
+    "VTOL-2":  "udp:127.0.0.1:14541",
+    "VTOL-3":  "udp:127.0.0.1:14542",
+    "Rover-1": "udp:127.0.0.1:14543"
 }
 
 for name, address in VEHICLES.items():
