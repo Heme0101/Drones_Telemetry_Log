@@ -14,7 +14,7 @@ async def main():
     db = await Database.create()
 
     try:
-        drones = [Drone(f'udp:127.0.0.1:{14540+i}', f"Drone-{i}") for i in range(1, config.totalDrones+1)]
+        drones = [Drone(f'udp:127.0.0.1:{14540+i}', f"Drone-{i}") for i in range(0, config.totalDrones)]
 
         targets = []
         for i in range(len(drones)):
