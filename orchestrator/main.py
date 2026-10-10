@@ -10,7 +10,7 @@ async def main():
     timeInterval = 2
     missedReadsAllowed = 3
 
-    flyTo = (-121.9640,37.3985)
+    flyTo = (-121.9638,37.3975)
     db = await Database.create()
 
     try:

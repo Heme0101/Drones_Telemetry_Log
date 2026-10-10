@@ -14,9 +14,10 @@ vehicles = [
 
 for v in vehicles:
     standalone = "PX4_GZ_STANDALONE=1" if v["standalone"] else ""
+    battery_env = " ".join(f"{key}={value}" for key, value in config.VTOL_ENV.items()) if v["model"] == "gz_standard_vtol" else ""
 
     shell_cmd = (
-        f"{env_prefix} {standalone} PX4_GZ_WORLD=default "
+        f"{env_prefix} {standalone} {battery_env} PX4_GZ_WORLD=default "
         f"PX4_SIM_MODEL={v['model']} PX4_GZ_MODEL_POSE=\"{v['pose']}\" "
         f"./build/px4_sitl_default/bin/px4 -i {v['instance']}; exec bash"
     )

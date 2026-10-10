@@ -37,7 +37,7 @@ class Drone:
             takeoffConfirmation = await asyncio.to_thread(self.connection.recv_match, type="COMMAND_ACK", blocking=True, timeout=2)
             return takeoffConfirmation
 
-    async def land(self):
+    async def returnToLaunch(self):
         async with self.lock:
             await asyncio.to_thread(
                 self.connection.mav.command_long_send,
@@ -69,3 +69,9 @@ class Drone:
                 0,
                 -1,0,0,float('nan'),lat,long,40
             )
+
+    async def getBattery(self):
+        msg = self.connection.messages.get("SYS_STATUS")
+        if msg is None or msg.battery_remaining== -1:
+                return None
+        return msg.battery_remaining
