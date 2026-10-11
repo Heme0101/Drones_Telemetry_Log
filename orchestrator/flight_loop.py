@@ -1,11 +1,20 @@
 import asyncio
+import math
 import time
 import datetime
 import config
 
-async def droneLifeCycle(drone, db, timeInterval, target, missedReadsAllowed):
+def distanceMeters(lat1, lon1, lat2, lon2):
+    dLat = (lat2 - lat1) * 111320
+    dLon = (lon2 - lon1) * 111320 * math.cos(math.radians(lat1))
+    return math.hypot(dLat, dLon)
+
+async def droneLifeCycle(drone, db, timeInterval, waypoints, missedReadsAllowed):
     missedReads = 0
     lastLoggedTime = time.time()
+    waypointIndex = 0
+    patrolling = False
+    returning = False
 
     try:
         await drone.arm()
@@ -31,21 +40,41 @@ async def droneLifeCycle(drone, db, timeInterval, target, missedReadsAllowed):
                 print(f"{drone.droneId} left the boundary: {ack.result if ack is not None else 'no reply'}")
                 return
 
+            lat = fastCoordinates.lat / 1e7
+            lon = fastCoordinates.lon / 1e7
+            heightMeters = fastCoordinates.relative_alt / 1000
+            homeAmsl = (fastCoordinates.alt - fastCoordinates.relative_alt) / 1000
+            cruiseAmsl = homeAmsl + config.cruiseAltMeters
+
+            if not returning:
+                if not patrolling and heightMeters >= config.cruiseAltMeters - 2:
+                    patrolling = True
+                    await drone.goto(*waypoints[waypointIndex], cruiseAmsl)
+
+                elif patrolling:
+                    targetLon, targetLat = waypoints[waypointIndex]
+                    if distanceMeters(lat, lon, targetLat, targetLon) <= config.arrivalRadiusMeters:
+                        waypointIndex = (waypointIndex + 1) % len(waypoints)
+                        print(f"{drone.droneId}: reached corner, heading to waypoint {waypointIndex}")
+                        await drone.goto(*waypoints[waypointIndex], cruiseAmsl)
+
             if time.time() - lastLoggedTime >= timeInterval:
                 battery = await drone.getBattery()
                 if battery is None:
                     batteryText = f"{drone.droneId}  unknown"
                 elif battery <= config.lowBatteryThreshold:
                     batteryText = f"{drone.droneId}  Battery Left: {battery}%. WARNING BATTERY LOW"
-                    await drone.returnToLaunch()
+                    if not returning:
+                        returning = True
+                        await drone.returnToLaunch()
                 else:
                     batteryText = f"{drone.droneId}  Battery Left: {battery}%"
                 print(batteryText)
 
                 await db.addToDatabase(drone.droneId, fastPos, fastCoordinates, datetime.datetime.now())
 
-                if fastCoordinates.relative_alt / 304.8 >= 111:
-                    await drone.goto(*target)
+                if patrolling and not returning:
+                    await drone.goto(*waypoints[waypointIndex], cruiseAmsl)
 
                 lastLoggedTime = time.time()
             await asyncio.sleep(0.05)

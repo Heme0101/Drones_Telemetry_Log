@@ -34,3 +34,18 @@ class Database:
             host=config.DB_HOST
         )
         return cls(pool)
+
+    async def retrieveBoundary(self, name="Test Zone", insetMeters=config.boundaryInsetMeters):
+        vertexes = await self.pool.fetch(
+            """
+            SELECT ST_X(dp.geom) AS lon, ST_Y(dp.geom) AS lat
+            FROM geofences, LATERAL ST_DumpPoints(ST_Buffer(boundary, -($2::float8))::geometry) AS dp
+            WHERE name = $1
+            ORDER BY dp.path;
+            """,
+            name, insetMeters
+        )
+        corners = {}
+        for i, row in enumerate(vertexes[:-1]):
+            corners[i] = (row['lon'], row['lat'])
+        return corners

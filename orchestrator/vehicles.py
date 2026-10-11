@@ -59,7 +59,7 @@ class Drone:
             gps = await asyncio.to_thread(self.connection.recv_match, type="GLOBAL_POSITION_INT", blocking=True, timeout=2)
             return gps
 
-    async def goto(self, long, lat):
+    async def goto(self, long, lat, alt_amsl):
         async with self.lock:
             await asyncio.to_thread(
                 self.connection.mav.command_long_send,
@@ -67,7 +67,7 @@ class Drone:
                 self.connection.target_component,
                 mavutil.mavlink.MAV_CMD_DO_REPOSITION,
                 0,
-                -1,0,0,float('nan'),lat,long,40
+                -1,0,0,float('nan'),lat,long,alt_amsl
             )
 
     async def getBattery(self):

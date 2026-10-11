@@ -10,20 +10,17 @@ async def main():
     timeInterval = 2
     missedReadsAllowed = 3
 
-    flyTo = (-121.9638,37.3975)
     db = await Database.create()
 
     try:
         drones = [Drone(f'udp:127.0.0.1:{14540+i}', f"Drone-{i}") for i in range(0, config.totalDrones)]
-
-        targets = []
-        for i in range(len(drones)):
-            target = (flyTo[0] + 0.0001 * i, flyTo[1])
-            targets.append(target)
+        boundary = await db.retrieveBoundary()
+        corners = [boundary[k] for k in sorted(boundary)]
+        routes = [corners[i % len(corners):] + corners[:i % len(corners)] for i in range(len(drones))]
 
         results = await asyncio.gather(
-            *(droneLifeCycle(drone, db, timeInterval, target, missedReadsAllowed)
-              for drone, target in zip(drones,targets)),
+            *(droneLifeCycle(drone, db, timeInterval, route, missedReadsAllowed)
+              for drone, route in zip(drones, routes)),
             return_exceptions=True
         )
 
@@ -33,7 +30,6 @@ async def main():
 
     finally:
         await db.pool.close()
-
 
 if __name__ == "__main__":
     try:
