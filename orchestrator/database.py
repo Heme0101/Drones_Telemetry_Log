@@ -49,3 +49,17 @@ class Database:
         for i, row in enumerate(vertexes[:-1]):
             corners[i] = (row['lon'], row['lat'])
         return corners
+
+    async def retrieveCenter(self, name="Test Zone", insetMeters=config.boundaryInsetMeters):
+        row = await self.pool.fetchrow(
+            """
+            SELECT ST_X(center) AS lon, ST_Y(center) AS lat
+            FROM (
+                SELECT ST_Centroid(ST_Buffer(boundary, -($2::float8))::geometry) AS center
+                FROM geofences
+                WHERE name = $1
+            ) AS zone;
+            """,
+            name, insetMeters
+        )
+        return (row['lon'], row['lat'])

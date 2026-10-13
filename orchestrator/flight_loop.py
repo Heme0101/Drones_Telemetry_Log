@@ -1,24 +1,19 @@
 import asyncio
-import math
 import time
 import datetime
 import config
-
-def distanceMeters(lat1, lon1, lat2, lon2):
-    dLat = (lat2 - lat1) * 111320
-    dLon = (lon2 - lon1) * 111320 * math.cos(math.radians(lat1))
-    return math.hypot(dLat, dLon)
+from orchestrator.flight_state import FlightState
+from orchestrator.geo import distanceMeters
 
 async def droneLifeCycle(drone, db, timeInterval, waypoints, missedReadsAllowed):
     missedReads = 0
     lastLoggedTime = time.time()
     waypointIndex = 0
-    patrolling = False
-    returning = False
 
     try:
         await drone.arm()
-        await drone.takeoff() 
+        await drone.takeoff()
+        state = FlightState.TAKEOFF
         while True:
             fastPos = await drone.getPosition()
             fastCoordinates = await drone.getLocation()
@@ -31,7 +26,7 @@ async def droneLifeCycle(drone, db, timeInterval, waypoints, missedReadsAllowed)
                     await drone.returnToLaunch()
                     return
                 continue
-            missedReads=0
+            missedReads = 0
 
             boundaryCompliance = await db.checkSpatialCoordinates(fastCoordinates)
 
@@ -46,12 +41,12 @@ async def droneLifeCycle(drone, db, timeInterval, waypoints, missedReadsAllowed)
             homeAmsl = (fastCoordinates.alt - fastCoordinates.relative_alt) / 1000
             cruiseAmsl = homeAmsl + config.cruiseAltMeters
 
-            if not returning:
-                if not patrolling and heightMeters >= config.cruiseAltMeters - 2:
-                    patrolling = True
+            if state != FlightState.LOW_BATTERY:
+                if state == FlightState.TAKEOFF and heightMeters >= config.cruiseAltMeters - 2:
+                    state = FlightState.PATROL
                     await drone.goto(*waypoints[waypointIndex], cruiseAmsl)
 
-                elif patrolling:
+                elif state == FlightState.PATROL:
                     targetLon, targetLat = waypoints[waypointIndex]
                     if distanceMeters(lat, lon, targetLat, targetLon) <= config.arrivalRadiusMeters:
                         waypointIndex = (waypointIndex + 1) % len(waypoints)
@@ -64,8 +59,8 @@ async def droneLifeCycle(drone, db, timeInterval, waypoints, missedReadsAllowed)
                     batteryText = f"{drone.droneId}  unknown"
                 elif battery <= config.lowBatteryThreshold:
                     batteryText = f"{drone.droneId}  Battery Left: {battery}%. WARNING BATTERY LOW"
-                    if not returning:
-                        returning = True
+                    if state != FlightState.LOW_BATTERY:
+                        state = FlightState.LOW_BATTERY
                         await drone.returnToLaunch()
                 else:
                     batteryText = f"{drone.droneId}  Battery Left: {battery}%"
@@ -73,7 +68,7 @@ async def droneLifeCycle(drone, db, timeInterval, waypoints, missedReadsAllowed)
 
                 await db.addToDatabase(drone.droneId, fastPos, fastCoordinates, datetime.datetime.now())
 
-                if patrolling and not returning:
+                if state == FlightState.PATROL:
                     await drone.goto(*waypoints[waypointIndex], cruiseAmsl)
 
                 lastLoggedTime = time.time()

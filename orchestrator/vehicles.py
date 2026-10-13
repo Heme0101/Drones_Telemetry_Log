@@ -75,3 +75,25 @@ class Drone:
         if msg is None or msg.battery_remaining== -1:
                 return None
         return msg.battery_remaining
+
+
+class Rover:
+    def __init__(self, connection_string="udpin:0.0.0.0:14543"):
+        self.connection = mavutil.mavlink_connection(connection_string)
+        self.lock = asyncio.Lock()
+
+    async def waitForHeartbeat(self):
+        msg = await asyncio.to_thread(self.connection.wait_heartbeat, timeout=2)
+        return msg is not None
+
+    async def getLocation(self):
+        async with self.lock:
+            msg = await asyncio.to_thread(
+                self.connection.recv_match,
+                type="GLOBAL_POSITION_INT",
+                blocking=True,
+                timeout=2,
+            )
+            if msg is None:
+                return None
+            return (msg.lon / 1e7, msg.lat / 1e7)

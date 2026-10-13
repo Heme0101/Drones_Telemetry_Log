@@ -1,15 +1,36 @@
+import asyncio
 import subprocess
 import config
 import time
+from orchestrator.database import Database
+from orchestrator.geo import offsetMeters
 
 processes=[]
 env_prefix = " ".join(f"{key}={value}" for key, value in config.LAUNCH_ENV.items())
 
+async def findCenter():
+    db = await Database.create()
+    try:
+        return await db.retrieveCenter()
+    finally:
+        await db.pool.close()
+
+centerLon, centerLat = asyncio.run(findCenter())
+centerEast, centerNorth = offsetMeters(
+    float(config.LAUNCH_ENV["PX4_HOME_LAT"]),
+    float(config.LAUNCH_ENV["PX4_HOME_LON"]),
+    centerLat,
+    centerLon
+)
+
+def pose(east, north):
+    return f"{round(east, 2) + 0.0:.2f},{round(north, 2) + 0.0:.2f}"
+
 vehicles = [
-    {"instance": "0", "model":"gz_standard_vtol", "pose": "0,0", "standalone": False},
-    {"instance": "1", "model":"gz_standard_vtol", "pose": "0,4", "standalone": True},
-    {"instance": "2", "model":"gz_standard_vtol", "pose": "0,8", "standalone": True},
-    {"instance": "3", "model":"gz_rover_differential", "pose": "0,12", "standalone": True}
+    {"instance": "0", "model":"gz_standard_vtol", "pose": pose(centerEast, centerNorth + 4), "standalone": False},
+    {"instance": "1", "model":"gz_standard_vtol", "pose": pose(centerEast, centerNorth + 8), "standalone": True},
+    {"instance": "2", "model":"gz_standard_vtol", "pose": pose(centerEast, centerNorth + 12), "standalone": True},
+    {"instance": "3", "model":"gz_rover_differential", "pose": pose(centerEast, centerNorth), "standalone": True}
 ]
 
 for v in vehicles:
