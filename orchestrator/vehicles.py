@@ -24,6 +24,19 @@ class Drone:
             armConfirmation = await asyncio.to_thread(self.connection.recv_match, type="COMMAND_ACK", blocking=True, timeout=2)
             return armConfirmation
 
+    async def disarm(self):
+        async with self.lock:
+            await asyncio.to_thread(
+                self.connection.mav.command_long_send,
+                self.connection.target_system,
+                self.connection.target_component,
+                mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM,
+                0,
+                0,0,0,0,0,0,0
+            )
+            disarmConfirmation = await asyncio.to_thread(self.connection.recv_match, type="COMMAND_ACK", blocking=True, timeout=2)
+            return disarmConfirmation
+
     async def takeoff(self):
         async with self.lock:
             await asyncio.to_thread(
@@ -36,6 +49,19 @@ class Drone:
             )
             takeoffConfirmation = await asyncio.to_thread(self.connection.recv_match, type="COMMAND_ACK", blocking=True, timeout=2)
             return takeoffConfirmation
+
+    async def land(self):
+        async with self.lock:
+            await asyncio.to_thread(
+                self.connection.mav.command_long_send,
+                self.connection.target_system,
+                self.connection.target_component,
+                mavutil.mavlink.MAV_CMD_NAV_LAND,
+                0,
+                0,0,0,0,0,0,0
+            )
+            landConfirmation = await asyncio.to_thread(self.connection.recv_match, type="COMMAND_ACK", blocking=True, timeout=2)
+            return landConfirmation
 
     async def returnToLaunch(self):
         async with self.lock:
@@ -84,7 +110,7 @@ class Rover:
 
     async def waitForHeartbeat(self):
         msg = await asyncio.to_thread(self.connection.wait_heartbeat, timeout=2)
-        return msg is not None
+        return True if msg is not None else 'Null, vehicle dead'
 
     async def getLocation(self):
         async with self.lock:
@@ -96,4 +122,4 @@ class Rover:
             )
             if msg is None:
                 return None
-            return (msg.lon / 1e7, msg.lat / 1e7)
+            return (msg.lon / 1e7, msg.lat / 1e7, 25)

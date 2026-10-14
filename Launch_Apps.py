@@ -5,7 +5,6 @@ import time
 from orchestrator.database import Database
 from orchestrator.geo import offsetMeters
 
-processes=[]
 env_prefix = " ".join(f"{key}={value}" for key, value in config.LAUNCH_ENV.items())
 
 async def findCenter():
@@ -27,15 +26,19 @@ def pose(east, north):
     return f"{round(east, 2) + 0.0:.2f},{round(north, 2) + 0.0:.2f}"
 
 vehicles = [
-    {"instance": "0", "model":"gz_standard_vtol", "pose": pose(centerEast, centerNorth + 4), "standalone": False},
-    {"instance": "1", "model":"gz_standard_vtol", "pose": pose(centerEast, centerNorth + 8), "standalone": True},
-    {"instance": "2", "model":"gz_standard_vtol", "pose": pose(centerEast, centerNorth + 12), "standalone": True},
+    {"instance": "0", "model":"gz_standard_vtol", "pose": pose(centerEast, centerNorth + 4), "standalone": False, "drain" : "210"},
+    {"instance": "1", "model":"gz_standard_vtol", "pose": pose(centerEast, centerNorth + 8), "standalone": True, "drain" : "270"},
+    {"instance": "2", "model":"gz_standard_vtol", "pose": pose(centerEast, centerNorth + 12), "standalone": True, "drain" : "330"},
     {"instance": "3", "model":"gz_rover_differential", "pose": pose(centerEast, centerNorth), "standalone": True}
 ]
 
 for v in vehicles:
     standalone = "PX4_GZ_STANDALONE=1" if v["standalone"] else ""
-    battery_env = " ".join(f"{key}={value}" for key, value in config.VTOL_ENV.items()) if v["model"] == "gz_standard_vtol" else ""
+    if v["model"] == "gz_standard_vtol":
+        batteryParameters = {**config.VTOL_ENV, "PX4_PARAM_SIM_BAT_DRAIN": v["drain"]}
+        battery_env = " ".join(f"{key}={value}" for key, value in batteryParameters.items())
+    else:
+        battery_env = ""
 
     shell_cmd = (
         f"{env_prefix} {standalone} {battery_env} PX4_GZ_WORLD=default "

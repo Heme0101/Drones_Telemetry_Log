@@ -5,7 +5,7 @@ import config
 from orchestrator.flight_state import FlightState
 from orchestrator.geo import distanceMeters
 
-async def droneLifeCycle(drone, db, timeInterval, waypoints, missedReadsAllowed):
+async def droneLifeCycle(drone, db, timeInterval, waypoints, missedReadsAllowed, rover):
     missedReads = 0
     lastLoggedTime = time.time()
     waypointIndex = 0
@@ -61,7 +61,6 @@ async def droneLifeCycle(drone, db, timeInterval, waypoints, missedReadsAllowed)
                     batteryText = f"{drone.droneId}  Battery Left: {battery}%. WARNING BATTERY LOW"
                     if state != FlightState.LOW_BATTERY:
                         state = FlightState.LOW_BATTERY
-                        await drone.returnToLaunch()
                 else:
                     batteryText = f"{drone.droneId}  Battery Left: {battery}%"
                 print(batteryText)
@@ -70,6 +69,17 @@ async def droneLifeCycle(drone, db, timeInterval, waypoints, missedReadsAllowed)
 
                 if state == FlightState.PATROL:
                     await drone.goto(*waypoints[waypointIndex], cruiseAmsl)
+
+                if state == FlightState.LOW_BATTERY:
+                     roverLong, roverLat, _ = await rover.getLocation()
+                     await drone.goto(roverLong, roverLat, cruiseAmsl)
+                     state = FlightState.RENDEZVOUS
+                elif state == FlightState.RENDEZVOUS:
+                    roverProximity = distanceMeters(lat, lon, roverLat, roverLong)
+                    if roverProximity <= 2:
+                        await drone.land()
+                        await drone.disarm()
+                        state = FlightState.RECHARGING
 
                 lastLoggedTime = time.time()
             await asyncio.sleep(0.05)

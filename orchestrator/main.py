@@ -1,6 +1,6 @@
 from pymavlink import mavutil
 from orchestrator.database import Database
-from orchestrator.vehicles import Drone
+from orchestrator.vehicles import Drone, Rover
 from orchestrator.flight_loop import droneLifeCycle
 import asyncio
 import config
@@ -13,13 +13,14 @@ async def main():
     db = await Database.create()
 
     try:
+        rover = Rover()
         drones = [Drone(f'udp:127.0.0.1:{14540+i}', f"Drone-{i}") for i in range(0, config.totalDrones)]
         boundary = await db.retrieveBoundary()
         corners = [boundary[k] for k in sorted(boundary)]
         routes = [corners[i % len(corners):] + corners[:i % len(corners)] for i in range(len(drones))]
 
         results = await asyncio.gather(
-            *(droneLifeCycle(drone, db, timeInterval, route, missedReadsAllowed)
+            *(droneLifeCycle(drone, db, timeInterval, route, missedReadsAllowed, rover)
               for drone, route in zip(drones, routes)),
             return_exceptions=True
         )
