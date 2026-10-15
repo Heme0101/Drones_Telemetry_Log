@@ -26,9 +26,9 @@ def pose(east, north):
     return f"{round(east, 2) + 0.0:.2f},{round(north, 2) + 0.0:.2f}"
 
 vehicles = [
-    {"instance": "0", "model":"gz_standard_vtol", "pose": pose(centerEast, centerNorth + 4), "standalone": False, "drain" : "210"},
-    {"instance": "1", "model":"gz_standard_vtol", "pose": pose(centerEast, centerNorth + 8), "standalone": True, "drain" : "270"},
-    {"instance": "2", "model":"gz_standard_vtol", "pose": pose(centerEast, centerNorth + 12), "standalone": True, "drain" : "330"},
+    {"instance": "0", "model":"gz_standard_vtol", "pose": pose(centerEast, centerNorth + 4), "standalone": False, "drain" : "840"},
+    {"instance": "1", "model":"gz_standard_vtol", "pose": pose(centerEast, centerNorth + 8), "standalone": True, "drain" : "840"},
+    {"instance": "2", "model":"gz_standard_vtol", "pose": pose(centerEast, centerNorth + 12), "standalone": True, "drain" : "840"},
     {"instance": "3", "model":"gz_rover_differential", "pose": pose(centerEast, centerNorth), "standalone": True}
 ]
 

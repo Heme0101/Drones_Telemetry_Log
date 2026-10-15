@@ -4,7 +4,9 @@ DB_PASSWORD = "your_password"
 DB_HOST = "localhost"
 
 totalDrones = 3
-lowBatteryThreshold = 40
+lowBatteryThreshold = 70
+rendezvousRadiusMeters = 2
+rendezvousOffsetMeters = 0.0127
 arrivalRadiusMeters = 5   # a corner counts as reached within this distance
 cruiseAltMeters = 35      # patrol height above home; takeoff() asks for 60 m AMSL = 35 m over a 25 m home
 boundaryInsetMeters = 8   # patrol corners sit this many meters inside the geofence edge

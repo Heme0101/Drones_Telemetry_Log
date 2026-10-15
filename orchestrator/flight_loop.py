@@ -1,14 +1,16 @@
 import asyncio
+import math
 import time
 import datetime
 import config
 from orchestrator.flight_state import FlightState
-from orchestrator.geo import distanceMeters
+from orchestrator.geo import distanceMeters, METERS_PER_DEGREE
 
 async def droneLifeCycle(drone, db, timeInterval, waypoints, missedReadsAllowed, rover):
     missedReads = 0
     lastLoggedTime = time.time()
     waypointIndex = 0
+    padLocked = False
 
     try:
         await drone.arm()
@@ -44,6 +46,9 @@ async def droneLifeCycle(drone, db, timeInterval, waypoints, missedReadsAllowed,
             if state != FlightState.LOW_BATTERY:
                 if state == FlightState.TAKEOFF and heightMeters >= config.cruiseAltMeters - 2:
                     state = FlightState.PATROL
+                    if padLocked:
+                        rover.padLock.release()
+                        padLocked = False
                     await drone.goto(*waypoints[waypointIndex], cruiseAmsl)
 
                 elif state == FlightState.PATROL:
@@ -59,7 +64,7 @@ async def droneLifeCycle(drone, db, timeInterval, waypoints, missedReadsAllowed,
                     batteryText = f"{drone.droneId}  unknown"
                 elif battery <= config.lowBatteryThreshold:
                     batteryText = f"{drone.droneId}  Battery Left: {battery}%. WARNING BATTERY LOW"
-                    if state != FlightState.LOW_BATTERY:
+                    if state in (FlightState.LOW_BATTERY, FlightState.PATROL):
                         state = FlightState.LOW_BATTERY
                 else:
                     batteryText = f"{drone.droneId}  Battery Left: {battery}%"
@@ -71,15 +76,29 @@ async def droneLifeCycle(drone, db, timeInterval, waypoints, missedReadsAllowed,
                     await drone.goto(*waypoints[waypointIndex], cruiseAmsl)
 
                 if state == FlightState.LOW_BATTERY:
-                     roverLong, roverLat, _ = await rover.getLocation()
-                     await drone.goto(roverLong, roverLat, cruiseAmsl)
-                     state = FlightState.RENDEZVOUS
+                    if not rover.padLock.locked():
+                        roverLocation = await rover.getLocation()
+                        if roverLocation is not None and not rover.padLock.locked():
+                            await rover.padLock.acquire()
+                            print(f"{drone.droneId}: got the pad")
+                            padLocked = True
+                            roverLong, roverLat, _ = roverLocation
+                            landLong = roverLong - config.rendezvousOffsetMeters / (METERS_PER_DEGREE * math.cos(math.radians(roverLat)))
+                            await drone.goto(landLong, roverLat, cruiseAmsl)
+                            state = FlightState.RENDEZVOUS
+                    else:
+                        state = FlightState.PATROL
                 elif state == FlightState.RENDEZVOUS:
                     roverProximity = distanceMeters(lat, lon, roverLat, roverLong)
-                    if roverProximity <= 2:
+                    print(roverProximity)
+                    if roverProximity <= 1:
                         await drone.land()
-                        await drone.disarm()
                         state = FlightState.RECHARGING
+
+                if state == FlightState.RECHARGING and battery == 100:
+                    await drone.arm()
+                    await drone.takeoff()
+                    state = FlightState.TAKEOFF
 
                 lastLoggedTime = time.time()
             await asyncio.sleep(0.05)
@@ -94,3 +113,6 @@ async def droneLifeCycle(drone, db, timeInterval, waypoints, missedReadsAllowed,
     except Exception as E:
         print(f"{drone.droneId}: has failed in the loop: {E}")
         await drone.returnToLaunch()
+    finally:
+        if padLocked:
+            rover.padLock.release()

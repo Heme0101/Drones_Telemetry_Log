@@ -107,6 +107,7 @@ class Rover:
     def __init__(self, connection_string="udpin:0.0.0.0:14543"):
         self.connection = mavutil.mavlink_connection(connection_string)
         self.lock = asyncio.Lock()
+        self.padLock = asyncio.Lock()
 
     async def waitForHeartbeat(self):
         msg = await asyncio.to_thread(self.connection.wait_heartbeat, timeout=2)
