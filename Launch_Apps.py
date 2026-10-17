@@ -43,7 +43,7 @@ for v in vehicles:
     shell_cmd = (
         f"{env_prefix} {standalone} {battery_env} PX4_GZ_WORLD=default "
         f"PX4_SIM_MODEL={v['model']} PX4_GZ_MODEL_POSE=\"{v['pose']}\" "
-        f"./build/px4_sitl_default/bin/px4 -i {v['instance']}; exec bash"
+        f"~//Documents/Larp/PX4-Autopilot/build/px4_sitl_default/bin/px4 -i {v['instance']}; exec bash"
     )
     
     initiation = subprocess.Popen([
@@ -60,5 +60,5 @@ for v in vehicles:
 qgc = subprocess.Popen([
     "gnome-terminal", 
     f"--working-directory={config.LAUNCH_CWD}", 
-    "--", "./QGroundControl-x86_64.AppImage",
+    "--", "/home/fs/Applications/QGroundControl.AppImage",
 ])

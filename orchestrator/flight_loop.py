@@ -49,6 +49,7 @@ async def droneLifeCycle(drone, db, timeInterval, waypoints, missedReadsAllowed,
                     if padLocked:
                         rover.padLock.release()
                         padLocked = False
+                        print(f"{drone.droneId} released the pad")
                     await drone.goto(*waypoints[waypointIndex], cruiseAmsl)
 
                 elif state == FlightState.PATROL:
@@ -80,7 +81,7 @@ async def droneLifeCycle(drone, db, timeInterval, waypoints, missedReadsAllowed,
                         roverLocation = await rover.getLocation()
                         if roverLocation is not None and not rover.padLock.locked():
                             await rover.padLock.acquire()
-                            print(f"{drone.droneId}: got the pad")
+                            print(f"{drone.droneId}: secured the pad")
                             padLocked = True
                             roverLong, roverLat, _ = roverLocation
                             landLong = roverLong - config.rendezvousOffsetMeters / (METERS_PER_DEGREE * math.cos(math.radians(roverLat)))
