@@ -1,4 +1,6 @@
 from pymavlink import mavutil
+from pydantic import ValidationError
+from orchestrator.models import GlobalPosition
 import asyncio
 
 
@@ -83,7 +85,13 @@ class Drone:
     async def getLocation(self):
         async with self.lock:
             gps = await asyncio.to_thread(self.connection.recv_match, type="GLOBAL_POSITION_INT", blocking=True, timeout=2)
-            return gps
+            if gps is None:
+                return None
+            try:
+                return GlobalPosition(lat = gps.lat, lon = gps.lon, alt = gps.alt, relative_alt = gps.relative_alt)
+            except ValidationError as e:
+                print(f"{self.droneId}: rejected bad position: {e}")
+                return None
 
     async def goto(self, long, lat, alt_amsl):
         async with self.lock:
@@ -110,8 +118,9 @@ class Rover:
         self.padLock = asyncio.Lock()
 
     async def waitForHeartbeat(self):
-        msg = await asyncio.to_thread(self.connection.wait_heartbeat, timeout=2)
-        return True if msg is not None else 'Null, vehicle dead'
+        msg = await asyncio.to_thread(self.connection.wait_heartbeat, timeout=10)
+        return msg.type == mavutil.mavlink.MAV_TYPE_GROUND_ROVER
+
 
     async def getLocation(self):
         async with self.lock:
@@ -123,4 +132,8 @@ class Rover:
             )
             if msg is None:
                 return None
-            return (msg.lon / 1e7, msg.lat / 1e7, 25)
+            try:
+                return GlobalPosition(lat = msg.lat, lon = msg.lon, alt = msg.alt, relative_alt = msg.relative_alt)
+            except ValidationError as e:
+                print("Can not get Rover location: ", e)
+                return None

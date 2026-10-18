@@ -79,12 +79,13 @@ async def droneLifeCycle(drone, db, timeInterval, waypoints, missedReadsAllowed,
                 if state == FlightState.LOW_BATTERY:
                     if not rover.padLock.locked():
                         roverLocation = await rover.getLocation()
+                        roverLong = roverLocation.lon / 1e7
+                        roverLat = roverLocation.lat / 1e7
                         if roverLocation is not None and not rover.padLock.locked():
                             await rover.padLock.acquire()
                             print(f"{drone.droneId}: secured the pad")
                             padLocked = True
-                            roverLong, roverLat, _ = roverLocation
-                            landLong = roverLong - config.rendezvousOffsetMeters / (METERS_PER_DEGREE * math.cos(math.radians(roverLat)))
+                            landLong = roverLong- config.rendezvousOffsetMeters / (METERS_PER_DEGREE * math.cos(math.radians(roverLat)))
                             await drone.goto(landLong, roverLat, cruiseAmsl)
                             state = FlightState.RENDEZVOUS
                     else:
