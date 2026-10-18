@@ -23,6 +23,8 @@ class Database:
         f"POINT({long} {lat})", "Test Zone"
         )
 
+        if boundaryCompliance is None:
+            raise RuntimeError("Geofence 'Test Zone' row not found in database")
         return boundaryCompliance
 
     @classmethod

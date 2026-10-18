@@ -7,7 +7,8 @@ from orchestrator.flight_state import FlightState
 from orchestrator.geo import distanceMeters, METERS_PER_DEGREE
 
 async def droneLifeCycle(drone, db, timeInterval, waypoints, missedReadsAllowed, rover):
-    missedReads = 0
+    droneMissedReads = 0
+    roverMissedReads = 0
     lastLoggedTime = time.time()
     waypointIndex = 0
     padLocked = False
@@ -21,18 +22,18 @@ async def droneLifeCycle(drone, db, timeInterval, waypoints, missedReadsAllowed,
             fastCoordinates = await drone.getLocation()
 
             if fastPos is None or fastCoordinates is None:
-                missedReads+=1
+                droneMissedReads+=1
                 await asyncio.sleep(0.05)
-                if missedReads >= missedReadsAllowed:
+                if droneMissedReads >= missedReadsAllowed:
                     print(f"{drone.droneId}: failed to broadcast telemetry, landing.")
                     await drone.returnToLaunch()
                     return
                 continue
-            missedReads = 0
+            droneMissedReads = 0
 
             boundaryCompliance = await db.checkSpatialCoordinates(fastCoordinates)
 
-            if boundaryCompliance == False:
+            if boundaryCompliance is not True:
                 ack = await drone.returnToLaunch()
                 print(f"{drone.droneId} left the boundary: {ack.result if ack is not None else 'no reply'}")
                 return
@@ -77,17 +78,24 @@ async def droneLifeCycle(drone, db, timeInterval, waypoints, missedReadsAllowed,
                     await drone.goto(*waypoints[waypointIndex], cruiseAmsl)
 
                 if state == FlightState.LOW_BATTERY:
-                    if not rover.padLock.locked():
+                    if roverMissedReads >= missedReadsAllowed:
+                        print(f"{drone.droneId}: rover not responding, returning to launch")
+                        await drone.returnToLaunch()
+                        return
+
+                    elif not rover.padLock.locked():
                         roverLocation = await rover.getLocation()
-                        roverLong = roverLocation.lon / 1e7
-                        roverLat = roverLocation.lat / 1e7
-                        if roverLocation is not None and not rover.padLock.locked():
+                        if roverLocation is None:
+                            roverMissedReads += 1
+                        elif not rover.padLock.locked():
+                            roverLong = roverLocation.lon / 1e7
+                            roverLat = roverLocation.lat / 1e7
+                            roverMissedReads = 0
                             await rover.padLock.acquire()
                             print(f"{drone.droneId}: secured the pad")
                             padLocked = True
                             landLong = roverLong- config.rendezvousOffsetMeters / (METERS_PER_DEGREE * math.cos(math.radians(roverLat)))
                             await drone.goto(landLong, roverLat, cruiseAmsl)
-                            state = FlightState.RENDEZVOUS
                     else:
                         state = FlightState.PATROL
                 elif state == FlightState.RENDEZVOUS:
