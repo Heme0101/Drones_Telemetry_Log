@@ -4,7 +4,7 @@ import time
 import datetime
 import config
 from orchestrator.flight_state import FlightState
-from orchestrator.geo import distanceMeters, METERS_PER_DEGREE
+from orchestrator.geo import distanceMeters, METERS_PER_DEGREE, expectedTravelTime
 
 async def droneLifeCycle(drone, db, timeInterval, waypoints, missedReadsAllowed, rover):
     droneMissedReads = 0
@@ -92,19 +92,27 @@ async def droneLifeCycle(drone, db, timeInterval, waypoints, missedReadsAllowed,
                             roverLat = roverLocation.lat / 1e7
                             roverMissedReads = 0
                             await rover.padLock.acquire()
+                            initialRoverProximity = distanceMeters(lat, lon, roverLat, roverLong)
+                            rendezvousLimit = expectedTravelTime(initialRoverProximity, config.cruiseSpeedMps) *2
                             print(f"{drone.droneId}: secured the pad")
                             padLocked = True
                             landLong = roverLong- config.rendezvousOffsetMeters / (METERS_PER_DEGREE * math.cos(math.radians(roverLat)))
                             await drone.goto(landLong, roverLat, cruiseAmsl)
+                            state = FlightState.RENDEZVOUS
+                            rendezvousClock = time.time()
                     else:
                         state = FlightState.PATROL
                 elif state == FlightState.RENDEZVOUS:
-                    roverProximity = distanceMeters(lat, lon, roverLat, roverLong)
-                    print(roverProximity)
-                    if roverProximity <= 1:
+                    currentRoverProximity = distanceMeters(lat, lon, roverLat, roverLong)
+                    print(f"{drone.droneId} is {round(currentRoverProximity)} meters from the rover")
+                    if currentRoverProximity <= 1:
                         await drone.land()
                         state = FlightState.RECHARGING
-
+                    elif time.time() - rendezvousClock >= rendezvousLimit:
+                        print(f"{drone.droneId} rendezvous timed out, releasing pad lock.")
+                        rover.padLock.release()
+                        padLocked = False
+                        state = FlightState.PATROL
                 if state == FlightState.RECHARGING and battery == 100:
                     await drone.arm()
                     await drone.takeoff()
