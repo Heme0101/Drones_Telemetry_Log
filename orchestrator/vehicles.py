@@ -3,6 +3,15 @@ from pydantic import ValidationError
 from orchestrator.models import GlobalPosition
 import asyncio
 
+def commandAccepted(ack):
+    return ack is not None and ack.result == mavutil.mavlink.MAV_RESULT_ACCEPTED
+
+def describeAck(ack):
+    return ack.result if ack is not None else "no reply"
+
+def raiseAckError(ack, action):
+    raise RuntimeError(f"{action} command not accepted (result: {describeAck(ack)})")
+
 
 class Drone:
     def __init__(self, connection_string, droneId):
@@ -106,10 +115,10 @@ class Drone:
 
     async def getBattery(self):
         msg = self.connection.messages.get("SYS_STATUS")
-        if msg is None or msg.battery_remaining== -1:
+        if msg is None or msg.battery_remaining == -1:
                 return None
         return msg.battery_remaining
-
+    
 
 class Rover:
     def __init__(self, connection_string="udpin:0.0.0.0:14543"):

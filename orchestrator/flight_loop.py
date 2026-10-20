@@ -5,17 +5,25 @@ import datetime
 import config
 from orchestrator.flight_state import FlightState
 from orchestrator.geo import distanceMeters, METERS_PER_DEGREE, expectedTravelTime
+from orchestrator.vehicles import commandAccepted, describeAck, raiseAckError
 
 async def droneLifeCycle(drone, db, timeInterval, waypoints, missedReadsAllowed, rover):
     droneMissedReads = 0
     roverMissedReads = 0
-    lastLoggedTime = time.time()
     waypointIndex = 0
     padLocked = False
+    landAttempts = 0
+    lastLoggedTime = time.time()
 
     try:
-        await drone.arm()
-        await drone.takeoff()
+        ack = await drone.arm()
+        if not commandAccepted(ack):
+            raiseAckError(ack, "arm")
+
+        ack = await drone.takeoff()
+        if not commandAccepted(ack):
+            raiseAckError(ack, "takeoff")
+        
         state = FlightState.TAKEOFF
         while True:
             fastPos = await drone.getPosition()
@@ -34,8 +42,10 @@ async def droneLifeCycle(drone, db, timeInterval, waypoints, missedReadsAllowed,
             boundaryCompliance = await db.checkSpatialCoordinates(fastCoordinates)
 
             if boundaryCompliance is not True:
+                print(f"{drone.droneId} breached the boundary!")
                 ack = await drone.returnToLaunch()
-                print(f"{drone.droneId} left the boundary: {ack.result if ack is not None else 'no reply'}")
+                if not commandAccepted(ack):
+                    print(f"{drone.droneId}: failed to return to launch. Mission Abort! (result: {describeAck(ack)})")
                 return
 
             lat = fastCoordinates.lat / 1e7
@@ -80,7 +90,9 @@ async def droneLifeCycle(drone, db, timeInterval, waypoints, missedReadsAllowed,
                 if state == FlightState.LOW_BATTERY:
                     if roverMissedReads >= missedReadsAllowed:
                         print(f"{drone.droneId}: rover not responding, returning to launch")
-                        await drone.returnToLaunch()
+                        ack = await drone.returnToLaunch()
+                        if not commandAccepted(ack):
+                            print(f"{drone.droneId}: failed to return to launch. Mission Abort! (result: {describeAck(ack)})")
                         return
 
                     elif not rover.padLock.locked():
@@ -106,16 +118,29 @@ async def droneLifeCycle(drone, db, timeInterval, waypoints, missedReadsAllowed,
                     currentRoverProximity = distanceMeters(lat, lon, roverLat, roverLong)
                     print(f"{drone.droneId} is {round(currentRoverProximity)} meters from the rover")
                     if currentRoverProximity <= 1:
-                        await drone.land()
-                        state = FlightState.RECHARGING
+                        ack = await drone.land()
+                        if commandAccepted(ack):
+                            state = FlightState.RECHARGING
+                            landAttempts = 0
+                        else:
+                            landAttempts += 1
+                            print(f"{drone.droneId}: land not accepted (result: {describeAck(ack)}), attempt {landAttempts}")
+                            if landAttempts >= 3:
+                                raiseAckError(ack, "land")
                     elif time.time() - rendezvousClock >= rendezvousLimit:
                         print(f"{drone.droneId} rendezvous timed out, releasing pad lock.")
                         rover.padLock.release()
                         padLocked = False
                         state = FlightState.PATROL
                 if state == FlightState.RECHARGING and battery == 100:
-                    await drone.arm()
-                    await drone.takeoff()
+                    ack = await drone.arm()
+                    if not commandAccepted(ack):
+                        raiseAckError(ack, "arm")
+                    
+                    ack = await drone.takeoff()
+                    if not commandAccepted(ack):
+                        raiseAckError(ack, "takeoff")
+
                     state = FlightState.TAKEOFF
 
                 lastLoggedTime = time.time()
@@ -130,7 +155,9 @@ async def droneLifeCycle(drone, db, timeInterval, waypoints, missedReadsAllowed,
         raise
     except Exception as E:
         print(f"{drone.droneId}: has failed in the loop: {E}")
-        await drone.returnToLaunch()
+        ack = await drone.returnToLaunch()
+        if not commandAccepted(ack):
+            print(f"{drone.droneId}: failed to return to launch. Mission Abort! (result: {describeAck(ack)})")
     finally:
         if padLocked:
             rover.padLock.release()
