@@ -13,6 +13,8 @@ async def droneLifeCycle(drone, db, timeInterval, waypoints, missedReadsAllowed,
     waypointIndex = 0
     padLocked = False
     landAttempts = 0
+    rechargeTimeoutAttempts = 0
+    stalled = False
     lastLoggedTime = time.time()
 
     try:
@@ -61,6 +63,14 @@ async def droneLifeCycle(drone, db, timeInterval, waypoints, missedReadsAllowed,
                         rover.padLock.release()
                         padLocked = False
                         print(f"{drone.droneId} released the pad")
+
+                    if stalled:
+                        print(f"{drone.droneId}: charged for too long, but battery is not full.")
+                        ack = await drone.returnToLaunch()
+                        if not commandAccepted(ack):
+                            print(f"{drone.droneId}: failed to return to launch (result: {describeAck(ack)})")
+                            return
+
                     await drone.goto(*waypoints[waypointIndex], cruiseAmsl)
 
                 elif state == FlightState.PATROL:
@@ -82,7 +92,10 @@ async def droneLifeCycle(drone, db, timeInterval, waypoints, missedReadsAllowed,
                     batteryText = f"{drone.droneId}  Battery Left: {battery}%"
                 print(batteryText)
 
-                await db.addToDatabase(drone.droneId, fastPos, fastCoordinates, datetime.datetime.now())
+                try:
+                    await db.addToDatabase(drone.droneId, fastPos, fastCoordinates, datetime.datetime.now())
+                except Exception as dbError:
+                    print(f"{drone.droneId}: database failed to log telemetry: {dbError}")
 
                 if state == FlightState.PATROL:
                     await drone.goto(*waypoints[waypointIndex], cruiseAmsl)
@@ -121,6 +134,7 @@ async def droneLifeCycle(drone, db, timeInterval, waypoints, missedReadsAllowed,
                         ack = await drone.land()
                         if commandAccepted(ack):
                             state = FlightState.RECHARGING
+                            rechargeTimeoutCounter = time.time()
                             landAttempts = 0
                         else:
                             landAttempts += 1
@@ -132,7 +146,7 @@ async def droneLifeCycle(drone, db, timeInterval, waypoints, missedReadsAllowed,
                         rover.padLock.release()
                         padLocked = False
                         state = FlightState.PATROL
-                if state == FlightState.RECHARGING and battery == 100:
+                if state == FlightState.RECHARGING and (battery == 100 or time.time() - rechargeTimeoutCounter >= config.rechargeTimeoutSeconds):
                     ack = await drone.arm()
                     if not commandAccepted(ack):
                         raiseAckError(ack, "arm")
@@ -141,8 +155,14 @@ async def droneLifeCycle(drone, db, timeInterval, waypoints, missedReadsAllowed,
                     if not commandAccepted(ack):
                         raiseAckError(ack, "takeoff")
 
-                    state = FlightState.TAKEOFF
+                    if time.time() - rechargeTimeoutCounter >= config.rechargeTimeoutSeconds:
+                        rechargeTimeoutAttempts += 1
+                        if rechargeTimeoutAttempts >= config.rechargeTimeoutLimit:
+                            stalled = True
+                    else:
+                        rechargeTimeoutAttempts = 0
 
+                    state = FlightState.TAKEOFF
                 lastLoggedTime = time.time()
             await asyncio.sleep(0.05)
                     
