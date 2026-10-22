@@ -93,7 +93,7 @@ async def droneLifeCycle(drone, db, timeInterval, waypoints, missedReadsAllowed,
                 print(batteryText)
 
                 try:
-                    await db.addToDatabase(drone.droneId, fastPos, fastCoordinates, datetime.datetime.now())
+                    await db.addToDatabase(drone.droneId, fastPos, fastCoordinates, datetime.datetime.now(datetime.timezone.utc))
                 except Exception as dbError:
                     print(f"{drone.droneId}: database failed to log telemetry: {dbError}")
 
