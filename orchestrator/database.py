@@ -1,10 +1,13 @@
 import asyncio
 import config
 import asyncpg
+from shapely import wkt
+from shapely.geometry import Point
 
 class Database:
     def __init__(self, pool):
         self.pool = pool
+        self.polygon = None
 
     async def addToDatabase(self, droneId, att, gps, timestamp):
         await self.pool.execute(
@@ -13,19 +16,12 @@ class Database:
         )
 
     async def checkSpatialCoordinates(self, gps):
+        if self.polygon is None:
+            raise RuntimeError("Geofence not loaded: call loadGeofence() first")
         lat = gps.lat/1e7
         long = gps.lon/1e7
-        
-        boundaryCompliance = await self.pool.fetchval("""
-        SELECT ST_Contains(boundary::geometry, ST_GeogFromText($1)::geometry)
-        FROM geofences WHERE name=$2;
-        """,
-        f"POINT({long} {lat})", "Test Zone"
-        )
 
-        if boundaryCompliance is None:
-            raise RuntimeError("Geofence 'Test Zone' row not found in database")
-        return boundaryCompliance
+        return bool(self.polygon.contains(Point(long, lat)))
 
     @classmethod
     async def create(cls):
@@ -35,7 +31,19 @@ class Database:
             password=config.DB_PASSWORD, 
             host=config.DB_HOST
         )
-        return cls(pool)
+        db = cls(pool)
+        try:
+            await db.loadGeofence()
+        except Exception:
+            await pool.close()
+            raise
+        return db
+
+    async def loadGeofence(self, name="Test Zone"):
+        boundaryAsText = await self.pool.fetchval("SELECT ST_AsText(boundary::geometry) FROM geofences WHERE name = $1", name)
+        if boundaryAsText is None:
+            raise RuntimeError(f"Geofence '{name}' not found in database")
+        self.polygon = wkt.loads(boundaryAsText)
 
     async def retrieveBoundary(self, name="Test Zone", insetMeters=config.boundaryInsetMeters):
         vertexes = await self.pool.fetch(
