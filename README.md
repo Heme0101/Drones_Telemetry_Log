@@ -29,8 +29,15 @@ Python packages required are in 'requirements.txt'.
 ## How to run
 
 1. pip install -r requirements.txt
-2. Create a PostgreSQL database with PostGIS enabled, then load **schema.sql**.
-3. Insert the geofence polygon named `Test Zone` (the program refuses to start without it). [add the seed step here]
+2. Create a PostgreSQL database with PostGIS enabled, then load **schema.sql**:
+```bash
+psql -U <your_username> -d <your_database> -h <your_host> -f schema.sql
+```
+3. Insert the geofence polygon named `Test Zone` (the program refuses to start without it). Then load **seed.sql**: 
+```bash
+psql -U <your_username> -d <your_database> -h <your_host> -f seed.sql
+```
+The polygon in seed.sql must surround the home point in **LAUNCH_ENV**. If you change its coordinates, change `PX4_HOME_LAT` and `PX4_HOME_LON` in your `config.py` to match, because PX4 takes its home point from `config.py`, not from the database.
 4. Copy `config_example.py` to `config.py` and fill in your database details.
 5. Make sure no old simulator processes are left: `pgrep -af "px4 -i"` should print nothing.
 6. **python3 Launch_Apps.py** starts the four vehicles and QGroundControl.
