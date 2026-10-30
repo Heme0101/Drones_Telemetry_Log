@@ -1,0 +1,3 @@
+INSERT INTO geofences (name, boundary)
+VALUES ('Test Zone', 
+        ST_GeogFromText('SRID=4326;POLYGON((-121.966 37.3965,-121.964 37.3965,-121.964 37.3985,-121.966 37.3985,-121.966 37.3965))'));
