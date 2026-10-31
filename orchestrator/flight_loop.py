@@ -117,20 +117,20 @@ async def droneLifeCycle(drone, db, timeInterval, waypoints, missedReadsAllowed,
                             roverLat = roverLocation.lat / 1e7
                             roverMissedReads = 0
                             await rover.padLock.acquire()
-                            initialRoverProximity = distanceMeters(lat, lon, roverLat, roverLong)
+                            landLong = roverLong + config.rendezvousOffsetMeters / (METERS_PER_DEGREE * math.cos(math.radians(roverLat)))
+                            initialRoverProximity = distanceMeters(lat, lon, roverLat, landLong)
                             rendezvousLimit = expectedTravelTime(initialRoverProximity, config.cruiseSpeedMps) *2
                             print(f"{drone.droneId}: secured the pad")
                             padLocked = True
-                            landLong = roverLong- config.rendezvousOffsetMeters / (METERS_PER_DEGREE * math.cos(math.radians(roverLat)))
                             await drone.goto(landLong, roverLat, cruiseAmsl)
                             state = FlightState.RENDEZVOUS
                             rendezvousClock = time.time()
                     else:
                         state = FlightState.PATROL
                 elif state == FlightState.RENDEZVOUS:
-                    currentRoverProximity = distanceMeters(lat, lon, roverLat, roverLong)
+                    currentRoverProximity = distanceMeters(lat, lon, roverLat, landLong)
                     print(f"{drone.droneId} is {round(currentRoverProximity)} meters from the rover")
-                    if currentRoverProximity <= 1:
+                    if currentRoverProximity <= config.rendezvousRadiusMeters:
                         ack = await drone.land()
                         if commandAccepted(ack):
                             state = FlightState.RECHARGING
