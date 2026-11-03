@@ -14,6 +14,17 @@ Each drone moves through five states: TAKEOFF, PATROL, LOW_BATTERY, RENDEZVOUS, 
 - **Failure handling.** Each of these ends differently and none stops the other drones: a refused command (`COMMAND_ACK` is checked), a rover that does not answer, a drone that never reaches the rover (timeout derived from distance and speed), a landing that is refused (3 attempts), a recharge that stalls (75 s), and a failed telemetry write.
 - **Telemetry** is stored with `timestamptz` timestamps.
 
+## Tests
+```bash
+python3 -m tests.fleet_test
+```
+This programs runs six fake drones through the real flight loop for about a minute, with a fake rover and a fake database, so no simulator or Postgres is needed (it does need a `config.py`; copy `config_example.py`). It checks one rule: no more than one drone is on the charging pad at a time, and no drone is left waiting on a pad that is already taken. It prints `PASS` or `FAIL` with the reason.
+To programmatically verify that the test suite successfully identifies edge-case concurrency failures, an intentional race condition was injected into the orchestration loop by removing the `pad_lock` re-check immediately following the `await` gate on **line 115 of `orchestrator/flight_loop.py`**. 
+- **Results:** Race condition triggered; it failed all three times (6 blocked `acquire()` calls each run), and passes with the check in place.
+
+The fake drones are a simplified model: they do not test PX4, MAVLink or the geofence.
+- **Baseline Execution:** Clean mutex enforcement, 0 safety violations.
+
 ## Prerequisites
 
 | Needs | Version | Notes |
