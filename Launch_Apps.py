@@ -60,5 +60,5 @@ for v in vehicles:
 qgc = subprocess.Popen([
     "gnome-terminal", 
     f"--working-directory={config.LAUNCH_CWD}", 
-    "--", "/home/fs/Applications/QGroundControl.AppImage",
+    "--", config.QGC_PATH,
 ])

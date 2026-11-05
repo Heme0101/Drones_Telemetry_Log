@@ -15,6 +15,7 @@ rechargeTimeoutSeconds = 75
 rechargeTimeoutLimit = 2
 
 LAUNCH_CWD = "/path/to/your/PX4-Autopilot"
+QGC_PATH = "/path/to/QGroundControl.AppImage"
 LAUNCH_ENV = {"PX4_HOME_LAT": "0.0", "PX4_HOME_LON": "0.0", "PX4_HOME_ALT": "0"}
 
 #MIN_PCT 0 removes PX4's default 50% floor.
